@@ -1,0 +1,115 @@
+# 必要なライブラリのインポート
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+import warnings
+
+# warningsを非表示に設定
+warnings.filterwarnings('ignore')
+
+## 1. データの読み込みと確認 (Step 1)
+print("===== Step 1: データの読み込みと確認 =====")
+
+# データの読み込み (ファイルパスは必ずご自身の環境に合わせて修正してください)
+# 例: train_df = pd.read_csv('./train.csv')
+train_df = pd.read_csv('/kaggle/input/muds-ml-and-dl-2025-test/train.csv')
+test_df = pd.read_csv('/kaggle/input/muds-ml-and-dl-2025-test/test.csv')
+
+print(f"訓練データのサイズ: {train_df.shape[0]}行 × {train_df.shape[1]}列")
+print(f"テストデータのサイズ: {test_df.shape[0]}行 × {test_df.shape[1]}列")
+print("\n--------------------\n")
+
+## 2. データの前処理 (Step 2)
+print("===== Step 2: データの前処理 =====")
+
+# IDと予測対象を分離
+test_ids = test_df['ID']
+
+# 予測対象 ('Attrition') を数値に変換 ('Yes' -> 1, 'No' -> 0)
+y = train_df['Attrition'].map({'Yes': 1, 'No': 0})
+
+# 特徴量 (IDとAttritionを除外)
+X = train_df.drop(['ID', 'Attrition'], axis=1)
+X_test = test_df.drop(['ID'], axis=1)
+
+# カテゴリカル変数（文字列型）を特定
+categorical_features = X.select_dtypes(include=['object']).columns.tolist()
+
+# LabelEncoderで文字列を数値に変換
+for col in categorical_features:
+    le = LabelEncoder()
+    # 訓練データとテストデータを結合して変換
+    combined = pd.concat([X[col], X_test[col]], axis=0).astype(str)
+    le.fit(combined)
+    
+    X[col] = le.transform(X[col])
+    X_test[col] = le.transform(X_test[col])
+
+print("✔ 文字列を数値に変換しました")
+
+# 役に立たない列を削除 (全レコードで同じ値を持つと仮定される列)
+useless_cols = ['EmployeeCount', 'StandardHours', 'Over18']
+useless_cols = [col for col in useless_cols if col in X.columns] 
+
+X = X.drop(useless_cols, axis=1)
+X_test = X_test.drop(useless_cols, axis=1)
+
+print(f"✔ 不要な列を削除しました: {useless_cols}")
+print("\n--------------------\n")
+
+## 3. モデルの訓練と評価 (Step 3)
+print("===== Step 3: モデルの訓練と評価 =====")
+
+# 訓練データを訓練用(80%)と検証用(20%)に分割
+X_train, X_valid, y_train, y_valid = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# ロジスティック回帰モデルの作成と訓練
+model = LogisticRegression(max_iter=1000, random_state=42)
+print("学習中...")
+model.fit(X_train, y_train)
+print("✔ 学習完了!")
+
+# モデルの性能評価 (検証データで予測)
+y_pred = model.predict(X_valid)
+
+# 正解率 (Accuracy) の計算
+accuracy = accuracy_score(y_valid, y_pred)
+print(f"\nモデルの正解率 (Accuracy): {accuracy:.4f} ({accuracy*100:.2f}%)")
+print("\n--------------------\n")
+
+## 4. 学習したモデルでテストデータを予測 (Step 4)
+print("===== Step 4: 学習したモデルでテストデータを予測 =====")
+
+# テストデータ全体を使って予測を行う (0か1を返す)
+test_predictions = model.predict(X_test)
+
+print(f"\n予測完了: {len(test_predictions)}件")
+print(f"離職ありと予測 (1): {(test_predictions == 1).sum()}件")
+print(f"離職なしと予測 (0): {(test_predictions == 0).sum()}件")
+print("\n--------------------\n")
+
+## 5. 提出ファイルを submission.csv として保存 (Step 5)
+print("===== Step 5: 提出ファイルを作成し、保存 =====")
+
+# 0/1 を 'Yes'/'No' に戻す
+test_pred_labels = pd.Series(test_predictions).map({1: 'Yes', 0: 'No'})
+
+# 提出用のDataFrameを作成 (IDと予測結果の2列)
+submission = pd.DataFrame({
+    'ID': test_ids,
+    'Attrition': test_pred_labels
+})
+
+# CSVファイルとして保存 (Kaggle/working ディレクトリに保存される)
+submission.to_csv('submission.csv', index=False)
+
+print(f"\n✔ submission.csv を作成しました! サイズ: {submission.shape[0]}行 × {submission.shape[1]}列")
+print("先頭5行:")
+print(submission.head())
+
+print("\n完了! このファイルをKaggleに提出しましょう! 🚀")
